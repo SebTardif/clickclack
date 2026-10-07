@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/openclaw/clickclack/apps/api/internal/store"
 	"io"
 	"net/http"
@@ -557,6 +558,48 @@ func TestOpenClawIDApplyDiscoveryDefaultIssuerFallsBack(t *testing.T) {
 	}
 }
 
+func TestOpenClawIDApplyDiscoveryUnavailableStatuses(t *testing.T) {
+	t.Parallel()
+	for _, code := range []int{404, 500, 501, 502, 503, 504, 599} {
+		for _, issuer := range []string{defaultOpenClawIDIssuer, "https://id.example.com/oidc"} {
+			t.Run(fmt.Sprintf("%d/%s", code, issuer), func(t *testing.T) {
+				t.Parallel()
+				cfg := OpenClawIDConfig{
+					ClientID: "client", ClientSecret: "test-secret", Issuer: issuer,
+					HTTPClient: &http.Client{Transport: oidcDiscoveryTransport(func(r *http.Request) (*http.Response, error) {
+						return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader("unavailable")), Header: make(http.Header), Request: r}, nil
+					})},
+				}
+				resolved, err := cfg.ApplyDiscovery(context.Background())
+				if issuer != defaultOpenClawIDIssuer {
+					if !errors.Is(err, errOIDCDiscoveryUnavailable) {
+						t.Fatalf("custom issuer must fail closed, got %v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if resolved.AuthURL != issuer+"/oauth2/authorize" || resolved.TokenURL != issuer+"/oauth2/token" {
+					t.Fatalf("unexpected fallback endpoints auth=%q token=%q", resolved.AuthURL, resolved.TokenURL)
+				}
+				for _, field := range []string{"authorization", "token"} {
+					explicit := cfg
+					if field == "authorization" {
+						explicit.AuthURL = "https://configured.example/authorize"
+					} else {
+						explicit.TokenURL = "https://configured.example/token"
+					}
+					got, err := explicit.ApplyDiscovery(context.Background())
+					if err != nil || (field == "authorization" && got.AuthURL != explicit.AuthURL) || (field == "token" && got.TokenURL != explicit.TokenURL) {
+						t.Fatalf("fallback did not preserve explicit %s endpoint: %v", field, err)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestOpenClawIDApplyDiscoveryRejectsIssuerMismatch(t *testing.T) {
 	t.Parallel()
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -642,6 +685,10 @@ func TestOpenClawIDDiscoveryRejectsMalformedMetadata(t *testing.T) {
 		{"insecure endpoint", `{"issuer":"https://id.openclaw.ai/api/auth","authorization_endpoint":"http://remote.example/authorize","token_endpoint":"https://id.openclaw.ai/token"}`, 200},
 		{"missing endpoint", `{"issuer":"https://id.openclaw.ai/api/auth"}`, 200},
 		{"redirect", "", 302},
+		{"client error", "", 400},
+		{"unauthorized", "", 401},
+		{"rate limited", "", 429},
+		{"outside server error range", "", 600},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := OpenClawIDConfig{ClientID: "client", ClientSecret: "test-secret", HTTPClient: &http.Client{Transport: oidcDiscoveryTransport(func(r *http.Request) (*http.Response, error) {
