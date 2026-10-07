@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep startup available during default OpenClaw ID discovery server errors while custom issuers still fail closed. Thanks @SebTardif.
+
 ## 0.7.0 - 2026-09-30
 
 **Highlights:** Personal channel order follows your account across browsers and devices.

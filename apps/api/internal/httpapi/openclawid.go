@@ -132,7 +132,9 @@ func (c OpenClawIDConfig) fetchOIDCDiscovery(ctx context.Context) (oidcDiscovery
 		return oidcDiscoveryDocument{}, errOIDCDiscoveryUnavailable
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented {
+	// Only the default issuer can use known endpoints when discovery is unavailable.
+	if resp.StatusCode == http.StatusNotFound || (resp.StatusCode >= 500 && resp.StatusCode < 600) {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, openClawIDDiscoveryMaxBytes))
 		return oidcDiscoveryDocument{}, errOIDCDiscoveryUnavailable
 	}
 	if resp.StatusCode != http.StatusOK {

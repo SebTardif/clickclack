@@ -278,7 +278,7 @@ At serve startup, ClickClack GETs
 document's `authorization_endpoint` and `token_endpoint`. The document `issuer`
 must match `OPENCLAW_ID_ISSUER`. The default OpenClaw ID issuer may fall back
 to `<issuer>/oauth2/authorize` and `<issuer>/oauth2/token` when discovery is
-unavailable (network failure, HTTP 404, or HTTP 501). Malformed metadata and
+unavailable (network failure, HTTP 404, or HTTP 5xx). Malformed metadata and
 redirects always fail closed. Any other issuer requires a usable discovery
 document. Explicit endpoint overrides are preserved independently. Discovery
 requests are bounded to 30 seconds and 64 KiB; endpoints require HTTPS except
